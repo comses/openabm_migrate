@@ -1,0 +1,356 @@
+<?php
+
+/**
+ * Implements hook_flush_caches().
+ */
+function openabm_migrate_flush_caches() {
+  openabm_migrate_register_migrations();
+}
+
+/**
+ * Register all D7->D7 migrations.
+ */
+function openabm_migrate_register_migrations() {
+  /**
+   * Each migration being registered takes an array of arguments, some required
+   * and some optional. Start with the common arguments required by all - the
+   * source_connection (connection key, set up in settings.php, pointing to
+   * the Drupal 7 database) and source_version (major version of Drupal).
+   */
+  $common_arguments = array(
+    'source_version' => 7,
+    'source_connection' => 'openabm',
+    'group_name' => 'kwall',
+    'format_mappings' => array(
+      '1' => 'filtered_html',
+      '3' => 'full_html',
+      '5' => 'full_html',
+    ),
+  );
+
+  /*-- Migrate Taxonomy --*/
+
+  $bookshelf_arguments = $common_arguments + array(
+    'machine_name' => 'BookshelfVocabulary',
+    'description' => t('Import Bookshelf terms'),
+    'source_vocabulary' => 'vocabulary_5',  // "keywords vocabulary
+    'destination_vocabulary' => 'bookshelves',
+  );
+  Migration::registerMigration(
+    'DrupalTerm7Migration',
+    $bookshelf_arguments['machine_name'],
+    $bookshelf_arguments
+  );
+
+  $keywords_arguments = $common_arguments + array(
+    'machine_name' => 'KeywordsVocabulary',
+    'description' => t('Import Keywords terms'),
+    'source_vocabulary' => 'vocabulary_6',  // "keywords vocabulary
+    'destination_vocabulary' => 'keywords',
+  );
+  Migration::registerMigration(
+    'DrupalTerm7Migration',
+    $keywords_arguments['machine_name'],
+    $keywords_arguments
+  );
+
+
+  /*-- Map old roles to new roles --*/
+
+  $role_arguments = $common_arguments + array(
+    'machine_name' => 'Role',
+    'description' => t('Import roles'),
+    'role_mappings' => array(
+      'administrator' => 'administrator',
+      'comses member' => 'comses member',
+      'openabm manager' => 'comses manager',
+      'comses reviewer' => 'comses reviewer',
+      'comses editor' => 'comses editor',
+      'comses editor manager' => 'comses managing editor',
+    ),
+    'dependencies' => array('KeywordsVocabulary'),
+  );
+  Migration::registerMigration(
+    'DrupalRole7Migration',
+    $role_arguments['machine_name'],
+    $role_arguments
+  );
+
+
+  /*-- Migrate Users --*/
+
+  // Import User Pictures
+  $picture_arguments = $common_arguments + array(
+    'machine_name' => 'UserPicture',
+    'description' => t('Import old user picture files'),
+    'default_uid' => 1,
+    'source_dir' => '/Applications/XAMPP/xamppfiles/htdocs/files/pictures',
+    'destination_dir' => 'public://users/pictures',
+    'dependencies' => array('Role'),
+  );
+  Migration::registerMigration(
+    'DrupalPicture7Migration',
+    $picture_arguments['machine_name'],
+    $picture_arguments
+  );
+
+
+  $user_arguments = $common_arguments + array(
+    'description' => t('Migration of users from old OpenABM'),
+    'machine_name' => 'User',
+    'role_migration' => 'Role',
+    'picture_migration' => 'UserPicture',
+    'dependencies' => array('UserPicture'),
+  );
+  Migration::registerMigration(
+    'OpenabmUserMigration', 
+    $user_arguments['machine_name'],
+    $user_arguments
+  );
+
+
+  /*-- Migrate Files --*/
+  // We first migrate the files so they can be referenced during the node migrations
+
+  $file_arguments = $common_arguments + array(
+    'machine_name' => 'File',
+    'description' => t('Import old OpenABM files'),
+    'user_migration' => 'User',
+    'default_uid' => 1,
+    'source_dir' => '/Applications/XAMPP/xamppfiles/htdocs/files/import',
+    'destination_dir' => 'public://legacy',
+    'dependencies' => array('User'),
+  );
+  Migration::registerMigration(
+    'DrupalFile7Migration',
+    $file_arguments['machine_name'],
+    $file_arguments
+  );
+
+
+  /*-- Content Types Migration --*/
+
+  // Use a layer of common arguments to reduce duplication
+  $node_arguments = $common_arguments + array(
+    'user_migration' => 'User',
+    'default_uid' => 1,
+  );
+
+  /*-- Migrate ABM News to Articles --*/
+  $news_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeNews',
+    'description' => t('Import ABM News nodes'),
+    'source_type' => 'abm_news',
+    'destination_type' => 'article',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmArticleMigration',
+    $news_node_arguments['machine_name'],
+    $news_node_arguments
+  );
+
+
+  /*-- Migrate Announcements to Articles --*/
+  $announce_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeAnnouncements',
+    'description' => t('Import Announcement nodes'),
+    'source_type' => 'announcement',
+    'destination_type' => 'article',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmArticleMigration',
+    $announce_node_arguments['machine_name'],
+    $announce_node_arguments
+  );
+
+
+  /*-- Migrate Biblio --*/
+  $biblio_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeBiblio',
+    'description' => t('Import Biblio nodes'),
+    'source_type' => 'biblio',
+    'destination_type' => 'biblio',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmBiblioNodeMigration',
+    $biblio_node_arguments['machine_name'],
+    $biblio_node_arguments
+  );
+
+
+  /*-- Migrate Book Pages --*/
+  $book_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeBook',
+    'description' => t('Import Book nodes'),
+    'source_type' => 'book',
+    'destination_type' => 'book',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmBookMigration',
+    $book_node_arguments['machine_name'],
+    $book_node_arguments
+  );
+
+
+  /*-- Migrate Classroom Materials to Book Pages --*/
+  $class_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeClass',
+    'description' => t('Import Class nodes'),
+    'source_type' => 'classroom_material',
+    'destination_type' => 'classroom_material',
+    'image_migration' => 'File',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmClassMigration',
+    $class_node_arguments['machine_name'],
+    $class_node_arguments
+  );
+
+
+  /*-- Migrate Events with old NIDs --*/
+  $event_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeEvent',
+    'description' => t('Import event nodes'),
+    'source_type' => 'event',
+    'destination_type' => 'event',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmEventMigration',
+    $event_node_arguments['machine_name'],
+    $event_node_arguments);
+
+  /*-- Migrate Events with new NIDs --*/
+  $event2_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeEvent2',
+    'description' => t('Import event nodes'),
+    'source_type' => 'event',
+    'destination_type' => 'event',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmEvent2Migration',
+    $event2_node_arguments['machine_name'],
+    $event2_node_arguments);
+
+  /*-- Migrate General Forum Topics to Forum Posts 
+  $_node_arguments = $node_arguments + array(
+    'machine_name' => 'Node',
+    'description' => t('Import nodes'),
+    'source_type' => '',
+    'destination_type' => '',
+  );
+  Migration::registerMigration('OpenabmNodeMigration', $_node_arguments['machine_name'], $_node_arguments);
+
+
+  /*-- Migrate Job Forum Topics to Forum Posts --
+  $_node_arguments = $node_arguments + array(
+    'machine_name' => 'Node',
+    'description' => t('Import nodes'),
+    'source_type' => '',
+    'destination_type' => '',
+  );
+  Migration::registerMigration('OpenabmNodeMigration', $_node_arguments['machine_name'], $_node_arguments);
+
+
+  /*-- Migrate Model nodes --*/
+  $model_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeModel',
+    'description' => t('Import model nodes'),
+    'source_type' => 'model',
+    'destination_type' => 'model',
+    'soft_dependencies' => array('KeywordsVocabulary', 'User', 'File'),
+  );
+  Migration::registerMigration(
+    'OpenabmModelNodeMigration',
+    $model_node_arguments['machine_name'],
+    $model_node_arguments
+  );
+
+
+  /*-- Migrate Model Version nodes --*/
+  $modelversion_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeModelVersion',
+    'description' => t('Import modelversion nodes'),
+    'source_type' => 'modelversion',
+    'destination_type' => 'modelversion',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmModelVersionNodeMigration',
+    $modelversion_node_arguments['machine_name'],
+    $modelversion_node_arguments
+  );
+
+
+  /*-- Migrate Pages with old NIDs --*/
+  $page_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodePage',
+    'description' => t('Import page nodes with old NID'),
+    'source_type' => 'page',
+    'destination_type' => 'page',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmPageMigration',
+    $page_node_arguments['machine_name'],
+    $page_node_arguments
+  );
+
+  /*-- Migrate Pages with new NIDs --*/
+  $page2_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodePage2',
+    'description' => t('Import page nodes with new NID'),
+    'source_type' => 'page',
+    'destination_type' => 'page',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmPage2Migration',
+    $page2_node_arguments['machine_name'],
+    $page2_node_arguments
+  );
+
+  /*-- Migrate Stories to Articles with old NID --*/
+  $story_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeStory',
+    'description' => t('Import story nodes'),
+    'source_type' => 'story',
+    'destination_type' => 'article',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmArticleMigration',
+    $story_node_arguments['machine_name'],
+    $story_node_arguments
+  );
+
+  /*-- Migrate Stories to Articles with new NID --*/
+  $story2_node_arguments = $node_arguments + array(
+    'machine_name' => 'NodeStory2',
+    'description' => t('Import story nodes'),
+    'source_type' => 'story',
+    'destination_type' => 'article',
+    'soft_dependencies' => array('User', 'File', 'NodeModel'),
+  );
+  Migration::registerMigration(
+    'OpenabmArticle2Migration',
+    $story2_node_arguments['machine_name'],
+    $story2_node_arguments
+  );
+}
+
+/**
+ * Implements hook_migrate_api().
+ */
+function openabm_migrate_migrate_api() {
+  $api = array(
+    'api' => 2,
+  );
+  return $api;
+}

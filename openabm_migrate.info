@@ -1,0 +1,16 @@
+name = "OpenABM Migrate Sites"
+description = "Migrate legacy OpenABM instance to KWALL staging site"
+package = "OpenABM"
+core = 7.x
+
+dependencies[] = migrate
+dependencies[] = migrate_d2d
+
+files[] = article.inc
+files[] = biblio.inc
+files[] = book.inc
+files[] = class.inc
+files[] = event.inc
+files[] = model.inc
+files[] = page.inc
+files[] = user.inc
